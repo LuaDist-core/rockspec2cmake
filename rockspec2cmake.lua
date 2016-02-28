@@ -1,6 +1,9 @@
 local load_table = require 'pl.pretty'.load
 local Template = require 'pl.text'.Template
 local subst = require 'pl.template'.substitute
+local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
+
+module("rockspec2cmake", package.seeall)
 
 local function load_rockspec(filename, env)
     local fd, err = io.open(filename)
@@ -16,33 +19,6 @@ local function load_rockspec(filename, env)
     return load_table(str)
 end
 
-local function table_concat(tbl)
-    return table.concat(tbl, " ")
-end
-
-local intro = Template[[
-# Generated Cmake file begin
-cmake_minimum_required(VERSION 3.1)
-
-project(${package_name} C CXX)
-]]
-
-local unsupported_platform_check = Template [[
-if (${platform})
-    message(FATAL_ERROR "Unsupported platform (your platform was explicitly marked as not supported)")
-endif()
-]]
-
-local supported_platform_check = Template [[
-if (${expr})
-    message(FATAL_ERROR "Unsupported platform (your platform is not in list of supported platforms)")
-endif()
-]]
-
-local find_libraries = Template [[
-find_library(${lib} ${lib} ${path})
-]]
-
 local cxx_module = Template [[
 include_directories(${incdirs})
 
@@ -54,13 +30,22 @@ target_link_libraries(${name} ${libraries})
 add_definitions(${defines})
 ]]
 
-local function install_lua_file(name, path)
+local find_libraries = Template [[
+find_library(${lib} ${lib} ${path})
+]]
+
+-- Move to CMakeBuilder
+local function table_concat(tbl)
+    return table.concat(tbl, " ")
+end
+
+local function install_lua_file(cmake, name, path)
     -- print("Install lua file " .. name .. " - " .. path)
     
     -- Force install file as name.lua, rename if needed
 end
 
-local function add_cxx_module(module_info)
+local function add_cxx_module(cmake, module_info)
     local libraries = ""
     if module_info.libraries ~= nil then
         local libdirs = table_concat(module_info.libdirs)
@@ -74,7 +59,7 @@ local function add_cxx_module(module_info)
         defines = table_concat(module_info.defines) }))
 end
 
-local function process_builtin(rockspec)
+local function process_builtin(cmake, rockspec)
     -- Process per-platform overrides
     if rockspec.build.platforms ~= nil then
         for _, platform in ipairs(rockspec.build.platforms) do
@@ -87,9 +72,9 @@ local function process_builtin(rockspec)
             -- Pathname of Lua file or C source, for modules based on single source file
             local ext = info:match(".([^.]+)$")
             if ext == "lua" then
-                install_lua_file(name, info)
+                install_lua_file(cmake, name, info)
             else
-                add_cxx_module({ name = name, sources = { info } })
+                add_cxx_module(cmake, { name = name, sources = { info } })
             end
         elseif type(info) == "table" then
             -- Two options:
@@ -99,7 +84,7 @@ local function process_builtin(rockspec)
                 info.sources = { info.sources }
             end
             
-            add_cxx_module({ name = name, sources  = info.sources, libraries = info.libraries, 
+            add_cxx_module(cmake, { name = name, sources  = info.sources, libraries = info.libraries, 
                 defines = info.defines, incdirs = info.incdirs, libdirs = info.libdirs })
         end
     end
@@ -113,18 +98,7 @@ else
     if not rockspec then
         print("Failed to load rockspec file (" .. arg[1] .. ")")
     else
-        print(intro:substitute({package_name = rockspec.package}))
-
-        -- All valid supported_platforms from rockspec file and their cmake counterparts
-        local rock2cmake = {
-            ["unix"] = "UNIX",
-            ["windows"] = "WIN32", -- ?
-            ["win32"] = "WIN32",
-            ["cygwin"] = "CYGWIN",
-            ["macosx"] = "UNIX", -- ?
-            ["linux"] = "UNIX", -- ?
-            ["freebsd"] = "UNIX" -- ?
-        }
+        local cmake = CMakeBuilder:new(nil, rockspec.package)
 
         -- Create check for case when we are using unsupported platform
         if rockspec.supported_platforms ~= nil then
@@ -132,29 +106,21 @@ else
             for _, plat in pairs(rockspec.supported_platforms) do
                 local neg, plat = plat:match("^(!?)(.*)")
                 if neg == "!" then
-                    print(unsupported_platform_check:substitute({platform = rock2cmake[plat]}))
+                    cmake:add_unsupported_platform(plat)
                 else
-                    if supported_platforms_check_str == "" then
-                        supported_platforms_check_str = "NOT " .. rock2cmake[plat]
-                    else
-                        supported_platforms_check_str = supported_platforms_check_str .. " AND NOT " .. rock2cmake[plat]
-                    end
+                    cmake:add_supported_platform(plat)
                 end
-            end
-
-            -- Create check to validate if we are using supported platform
-            -- If no positive supported_platforms exists, module is portable to any platform
-            if supported_platforms_check_str ~= "" then
-                print(supported_platform_check:substitute({expr = supported_platforms_check_str}))
             end
         end
 
         if rockspec.build.type == "builtin" then
-            process_builtin(rockspec)
+            process_builtin(cmake, rockspec)
         elseif rockspec.build.type == "cmake" then
             print("message(FATAL_ERROR \"Rockspec build type is cmake, please use the attached one\")")
         else
             print("message(FATAL_ERROR \"Unhandled rockspec build type\")")
         end
+
+        print(cmake:generate())
      end
 end
