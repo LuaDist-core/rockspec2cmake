@@ -1,0 +1,56 @@
+package = "test_package"
+version = "0.0-0"
+
+source =
+{
+    url = "git://github.com/.../....git",
+    tag = "0.0-0"
+}
+
+supported_platforms =
+{
+    "linux",
+    "macosx",
+    "!freebsd",
+}
+
+build =
+{
+    type = "builtin",
+
+    modules =
+    {
+        ["lua_module_1"] = "src/test/one.lua",
+        ["lua_module_2"] = "src/test/two.lua",
+
+        ["c_module_1"] =
+        {
+            sources = {"src/c_module_1.c"},
+            defines = {"MOD1_DEFINE"},
+            libraries = {"1_lib_1", "1_lib_2"},
+            incdirs = {"test/inc/dir"},
+            libdirs = {"test/lib/dir"},
+        },
+    },
+
+    install =
+    {
+        bin = { ["test"] = "src/test.sh", },
+    },
+
+    platforms =
+    {
+        linux =
+        {
+            modules =
+            {
+                ["linux_only_module"] = "src/test/linux_only.lua",
+
+                ["c_module_1"] =
+                {
+                    defines = {"LINUX_DEFINE"},
+                },
+            }
+        }
+    }
+}

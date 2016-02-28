@@ -19,73 +19,73 @@ local function load_rockspec(filename, env)
     return load_table(str)
 end
 
-local cxx_module = Template [[
-include_directories(${incdirs})
-
-add_library(${name} MODULE ${sources})
-
-${find_libraries}
-target_link_libraries(${name} ${libraries})
-
-add_definitions(${defines})
-]]
-
-local find_libraries = Template [[
-find_library(${lib} ${lib} ${path})
-]]
-
--- Move to CMakeBuilder
-local function table_concat(tbl)
-    return table.concat(tbl, " ")
-end
-
-local function install_lua_file(cmake, name, path)
-    -- print("Install lua file " .. name .. " - " .. path)
-    
-    -- Force install file as name.lua, rename if needed
-end
-
-local function add_cxx_module(cmake, module_info)
-    local libraries = ""
-    if module_info.libraries ~= nil then
-        local libdirs = table_concat(module_info.libdirs)
-        for _, lib in pairs(module_info.libraries) do
-            libraries = libraries .. find_libraries:substitute({ lib = lib, path = libdirs })
+-- For all entries in build table which are not present in override table, create their counterparts
+-- Except for table "platforms"
+local function fill_platform_override(override, build, recursive)
+    for k, v in pairs(build) do
+        if recursive ~= nil or k ~= "platforms" then
+            -- Recursively merge tables
+            if type(v) == "table" and type(override[k] or false) == "table" then
+                fill_platform_override(override[k], build[k], true)
+            -- Don't override value with table
+            elseif override[k] == nil then
+                override[k] = v
+            end
         end
     end
-    
-    print(cxx_module:substitute({ incdirs = table_concat(module_info.incdirs), name = module_info.name,
-        sources = table_concat(module_info.sources), find_libraries = libraries, libraries = table_concat(module_info.libraries),
-        defines = table_concat(module_info.defines) }))
 end
 
-local function process_builtin(cmake, rockspec)
-    -- Process per-platform overrides
-    if rockspec.build.platforms ~= nil then
-        for _, platform in ipairs(rockspec.build.platforms) do
-            -- foo
-        end
+local function prepare_build_table(build)
+    local res = {}
+
+    -- Copy equivalent fields
+    if build.install ~= nil then
+        res.install = {}
+        res.install.lua = build.install.lua
+        res.install.lib = build.install.lib
+        res.install.conf = build.install.conf
+        res.install.bin = build.install.bin
     end
-    
-    for name, info in pairs(rockspec.build.modules) do
+
+    res.copy_directories = build.copy_directories
+
+    -- Divide modules into two different tables (cxx and lua)
+    res.lua_modules = {}
+    res.cxx_modules = {}
+    for name, info in pairs(build.modules) do
+        -- Pathname of Lua file or C source, for modules based on single source file
         if type(info) == "string" then
-            -- Pathname of Lua file or C source, for modules based on single source file
             local ext = info:match(".([^.]+)$")
             if ext == "lua" then
-                install_lua_file(cmake, name, info)
+                res.lua_modules[name] = info
             else
-                add_cxx_module(cmake, { name = name, sources = { info } })
+                res.cxx_modules[name] = {sources = {info}}
             end
+        -- Two options:
+        -- array of strings - pathnames of C sources
+        -- table - possible fields sources, libraries, defines, incdirs, libdirs
         elseif type(info) == "table" then
-            -- Two options:
-            -- array of strings - pathnames of C sources
-            -- table - possible fields sources, libraries, defines, incdirs, libdirs
             if type(info.sources) == "string" then
                 info.sources = { info.sources }
             end
-            
-            add_cxx_module(cmake, { name = name, sources  = info.sources, libraries = info.libraries, 
-                defines = info.defines, incdirs = info.incdirs, libdirs = info.libdirs })
+
+            res.cxx_modules[name] = {sources = info.sources, libraries = info.libraries,
+                defines = info.defines, incdirs = info.incdirs, libdirs = info.libdirs}
+        end
+    end
+
+    return res
+end
+
+local function process_builtin(cmake, rockspec)
+    cmake:add_builtin_configuration(prepare_build_table(rockspec.build))
+
+    -- Process per-platform overrides
+    if rockspec.build.platforms ~= nil then
+        for platform, build in pairs(rockspec.build.platforms) do
+            -- For each platform override, merge it with rockspec.build
+            fill_platform_override(build, rockspec.build)
+            cmake:add_builtin_configuration(prepare_build_table(build), platform)
         end
     end
 end
@@ -116,9 +116,9 @@ else
         if rockspec.build.type == "builtin" then
             process_builtin(cmake, rockspec)
         elseif rockspec.build.type == "cmake" then
-            print("message(FATAL_ERROR \"Rockspec build type is cmake, please use the attached one\")")
+            cmake:fatal_error("Rockspec build type is cmake, please use the attached one")
         else
-            print("message(FATAL_ERROR \"Unhandled rockspec build type\")")
+            cmake:fatal_error("Unhandled rockspec build type")
         end
 
         print(cmake:generate())
