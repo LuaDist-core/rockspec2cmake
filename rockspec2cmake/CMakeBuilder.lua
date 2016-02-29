@@ -4,14 +4,23 @@ local subst = require 'pl.template'.substitute
 module("rockspec2cmake", package.seeall)
 
 -- All valid supported_platforms from rockspec file and their cmake counterparts
-local rock2cmake_platform = {
+local rock2cmake_platform =
+{
     ["unix"] = "UNIX",
-    ["windows"] = "WIN32", -- ?
+    ["windows"] = "WIN32",
     ["win32"] = "WIN32",
     ["cygwin"] = "CYGWIN",
-    ["macosx"] = "UNIX", -- ?
+    ["macosx"] = "APPLE",
     ["linux"] = "UNIX", -- ?
     ["freebsd"] = "UNIX" -- ?
+}
+
+local rock2cmake_install =
+{
+    ["lua"] = "${INSTALL_LMOD}", -- ? or bin
+    ["lib"] = "${INSTALL_LIB}",
+    ["conf"] = "${INSTALL_ETC}",
+    ["bin"] = "${INSTALL_BIN}",
 }
 
 local intro = Template[[
@@ -19,6 +28,19 @@ local intro = Template[[
 cmake_minimum_required(VERSION 3.1)
 
 project(${package_name} C CXX)
+
+find_library(lua lua)
+
+## INSTALL DEFAULTS (Relative to CMAKE_INSTALL_PREFIX)
+# Primary paths
+set(INSTALL_BIN bin CACHE PATH "Where to install binaries to.")
+set(INSTALL_LIB lib CACHE PATH "Where to install libraries to.")
+set(INSTALL_INC include CACHE PATH "Where to install headers to.")
+set(INSTALL_ETC etc CACHE PATH "Where to store configuration files")
+set(INSTALL_SHARE share CACHE PATH "Directory for shared data.")
+
+set(INSTALL_LMOD ${dollar}{INSTALL_LIB}/lua CACHE PATH "Directory to install Lua modules.")
+set(INSTALL_CMOD ${dollar}{INSTALL_LIB}/lua CACHE PATH "Directory to install Lua binary modules.")
 
 ]]
 
@@ -42,14 +64,12 @@ endif()
 ]]
 
 local cxx_module = Template [[
-include_directories(${incdirs})
-
-add_library(${name} MODULE ${sources})
+add_library(${name} ${sources})
 
 ${find_libraries}
-target_link_libraries(${name} ${libraries})
-
-add_definitions(${defines})
+target_include_directories(${name} PRIVATE ${incdirs})
+target_compile_definitions(${name} PRIVATE ${defines})
+target_link_libraries(${name} PRIVATE ${libraries})
 ]]
 
 local find_libraries = Template [[
@@ -66,22 +86,73 @@ local platform_not_overriden_intro = Template[[
 if (NOT PLATFORM_OVERRIDE_EXECUTED)
 ]]
 
+local install_directory = Template[[
+install(FILES ${source} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
+]]
+
+local install_files = Template[[
+install(DIRECTORY ${source} DESTINATION ${dest})
+]]
+
+local install_lua_module = Template[[
+install(FILES ${source} DESTINATION ${dollar}{INSTALL_LMOD}/${dest} RENAME ${new_name})
+]]
 
 
 local function table_concat(tbl)
-    return table.concat(tbl, " ")
+    -- Doesn't work for tables where keys are strings, why? I don't know
+    -- For example for rockspec.build.install.bin
+    -- return table.concat(tbl, " ")
+
+    res = ""
+    for _, v in pairs(tbl or {}) do
+        if res == "" then
+            res = v
+        else
+            res = res .. " " .. v
+        end
+    end
+
+    return res
 end
 
 local function generate_builtin(build)
     local res = ""
 
     -- install.{lua|lib|conf|bin}
+    for what, files in pairs(build.install) do
+        if table_concat(files) ~= "" then
+            res = res .. install_files:substitute({source = table_concat(files), dest = rock2cmake_install[what]})
+        end
+    end
 
     -- copy_directories
+    for _, dir in pairs(build.copy_directories or {}) do
+        res = res .. install_directory:substitute({source = dir, dollar = "$"})
+    end
 
     -- lua_modules
-        -- print("Install lua file " .. name .. " - " .. path)
-    -- Force install file as name.lua, rename if needed
+    for name, path in pairs(build.lua_modules or {}) do
+        -- Force install file as name.lua, rename if needed
+        -- special handling for init files
+        --[[
+        local filename = dir.base_name(info)
+        if info:match("init%.lua$") and not name:match("%.init$") then
+            moddir = path.module_to_path(name..".init")
+        else
+            local basename = name:match("([^.]+)$")
+            local baseinfo = filename:gsub("%.lua$", "")
+            if basename ~= baseinfo then
+                filename = basename..".lua"
+            end
+        end
+        local dest = dir.path(luadir, moddir, filename)
+        built_modules[info] = dest
+        --]]
+        
+        res = res .. install_lua_module:substitute({source = path, dest = name:gsub("%.", "/"),
+            new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
+    end
 
     -- cxx_modules
     for name, data in pairs(build.cxx_modules or {}) do
@@ -155,7 +226,7 @@ end
 function CMakeBuilder:generate()
     local res = ""
 
-    res = res .. intro:substitute({package_name = self.package_name})
+    res = res .. intro:substitute({package_name = self.package_name, dollar = "$"})
 
     -- Print all fatal errors at the beginning
     for _, error_msg in pairs(self.errors) do

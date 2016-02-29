@@ -36,11 +36,10 @@ local function fill_platform_override(override, build, recursive)
 end
 
 local function prepare_build_table(build)
-    local res = {}
+    local res = {install = {}}
 
     -- Copy equivalent fields
     if build.install ~= nil then
-        res.install = {}
         res.install.lua = build.install.lua
         res.install.lib = build.install.lib
         res.install.conf = build.install.conf
@@ -67,6 +66,10 @@ local function prepare_build_table(build)
         elseif type(info) == "table" then
             if type(info.sources) == "string" then
                 info.sources = { info.sources }
+            end
+
+            if type(info.libraries) == "string" then
+                info.libraries = { info.libraries }
             end
 
             res.cxx_modules[name] = {sources = info.sources, libraries = info.libraries,

@@ -16,12 +16,13 @@ supported_platforms =
 
 build =
 {
+    copy_directories = {"test", "examples"},
     type = "builtin",
 
     modules =
     {
-        ["lua_module_1"] = "src/test/one.lua",
-        ["lua_module_2"] = "src/test/two.lua",
+        ["lua.module.1"] = "src/test/one.lua",
+        ["lua.module.2"] = "src/test/two.lua",
 
         ["c_module_1"] =
         {
@@ -35,7 +36,10 @@ build =
 
     install =
     {
-        bin = { ["test"] = "src/test.sh", },
+        lua = {["lua.test"] = "src/a.lua",},
+        conf = {["cnf"] = "dep/a.cnf",},
+        bin = {["bin"] = "bin/b",},
+        lib = {["lib"] = "lib/not_linux_lib.dll"}
     },
 
     platforms =
@@ -50,7 +54,9 @@ build =
                 {
                     defines = {"LINUX_DEFINE"},
                 },
-            }
+            },
+
+            install = {lib = {["lib"] = "lib/lib.so"}},
         }
     }
 }
