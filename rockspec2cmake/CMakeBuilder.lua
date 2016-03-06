@@ -15,13 +15,7 @@ local rock2cmake_platform =
     ["freebsd"] = "UNIX" -- ?
 }
 
-local rock2cmake_install =
-{
-    ["lua"] = "${INSTALL_LMOD}", -- ? or bin
-    ["lib"] = "${INSTALL_LIB}",
-    ["conf"] = "${INSTALL_ETC}",
-    ["bin"] = "${INSTALL_BIN}",
-}
+local ident = "    "
 
 local intro = Template[[
 # Generated Cmake file begin
@@ -29,13 +23,12 @@ cmake_minimum_required(VERSION 3.1)
 
 project(${package_name} C CXX)
 
-find_library(lua lua)
+find_package(Lua)
 
 ## INSTALL DEFAULTS (Relative to CMAKE_INSTALL_PREFIX)
 # Primary paths
 set(INSTALL_BIN bin CACHE PATH "Where to install binaries to.")
 set(INSTALL_LIB lib CACHE PATH "Where to install libraries to.")
-set(INSTALL_INC include CACHE PATH "Where to install headers to.")
 set(INSTALL_ETC etc CACHE PATH "Where to store configuration files")
 set(INSTALL_SHARE share CACHE PATH "Directory for shared data.")
 
@@ -63,117 +56,43 @@ endif()
 
 ]]
 
-local cxx_module = Template [[
-add_library(${name} ${sources})
-
-${find_libraries}
-target_include_directories(${name} PRIVATE ${incdirs})
-target_compile_definitions(${name} PRIVATE ${defines})
-target_link_libraries(${name} PRIVATE ${libraries})
+local set_variable = Template [[
+set(${name} ${value})
 ]]
 
-local find_libraries = Template [[
-find_library(${lib} ${lib} ${path})
-]]
-
-local platform_override_intro = Template[[
+local platform_specific_block = Template[[
 if (${platform})
-    set(PLATFORM_OVERRIDE_EXECUTED true)
+${definitions}
+endif()
 
 ]]
 
-local platform_not_overriden_intro = Template[[
-if (NOT PLATFORM_OVERRIDE_EXECUTED)
-]]
+local build_install_copy = Template[[
+install(FILES ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_LUA} DESTINATION ${dollar}{INSTALL_LMOD})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_LIB} DESTINATION ${dollar}{INSTALL_LIB})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_CONF} DESTINATION ${dollar}{INSTALL_ETC})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_BIN} DESTINATION ${dollar}{INSTALL_BIN})
 
-local install_directory = Template[[
-install(FILES ${source} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
-]]
-
-local install_files = Template[[
-install(DIRECTORY ${source} DESTINATION ${dest})
 ]]
 
 local install_lua_module = Template[[
-install(FILES ${source} DESTINATION ${dollar}{INSTALL_LMOD}/${dest} RENAME ${new_name})
+install(FILES ${dollar}{${name}_SOURCES} DESTINATION ${dollar}{INSTALL_LMOD}/${dest} RENAME ${new_name})
 ]]
 
+local cxx_module = Template [[
+add_library(${name} ${dollar}{${name}_SOURCES})
 
-local function table_concat(tbl)
-    -- Doesn't work for tables where keys are strings, why? I don't know
-    -- For example for rockspec.build.install.bin
-    -- return table.concat(tbl, " ")
+foreach(LIBRARY ${dollar}{${name}_LIBRARIES})
+    find_library(${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
+endforeach(LIBRARY)
 
-    res = ""
-    for _, v in pairs(tbl or {}) do
-        if res == "" then
-            res = v
-        else
-            res = res .. " " .. v
-        end
-    end
+target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS})
+target_compile_definitions(${name} PRIVATE ${dollar}{${name}_DEFINES})
+target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES})
+install(TARGETS ${name} DESTINATION ${dollar}{INSTALL_CMOD})
 
-    return res
-end
-
-local function generate_builtin(build)
-    local res = ""
-
-    -- install.{lua|lib|conf|bin}
-    for what, files in pairs(build.install) do
-        if table_concat(files) ~= "" then
-            res = res .. install_files:substitute({source = table_concat(files), dest = rock2cmake_install[what]})
-        end
-    end
-
-    -- copy_directories
-    for _, dir in pairs(build.copy_directories or {}) do
-        res = res .. install_directory:substitute({source = dir, dollar = "$"})
-    end
-
-    -- lua_modules
-    for name, path in pairs(build.lua_modules or {}) do
-        -- Force install file as name.lua, rename if needed
-        -- special handling for init files
-        --[[
-        local filename = dir.base_name(info)
-        if info:match("init%.lua$") and not name:match("%.init$") then
-            moddir = path.module_to_path(name..".init")
-        else
-            local basename = name:match("([^.]+)$")
-            local baseinfo = filename:gsub("%.lua$", "")
-            if basename ~= baseinfo then
-                filename = basename..".lua"
-            end
-        end
-        local dest = dir.path(luadir, moddir, filename)
-        built_modules[info] = dest
-        --]]
-        
-        res = res .. install_lua_module:substitute({source = path, dest = name:gsub("%.", "/"),
-            new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
-    end
-
-    -- cxx_modules
-    for name, data in pairs(build.cxx_modules or {}) do
-        local libraries = ""
-        local libdirs = table_concat(data.libdirs)
-        for _, lib in pairs(data.libraries or {}) do
-            libraries = libraries .. find_libraries:substitute({ lib = lib, path = libdirs })
-        end
-
-        res = res .. cxx_module:substitute({incdirs = table_concat(data.incdirs), name = name,
-            sources = table_concat(data.sources), find_libraries = libraries, libraries = table_concat(data.libraries),
-            defines = table_concat(data.defines)})
-    end
-
-    -- Ident each line in result
-    local ident = "    "
-    res = ident .. res
-    res = res:gsub("\n", "\n" .. ident)
-    res = res:gsub(ident .. "$", "")
-    return res
-end
+]]
 
 -- CMakeBuilder
 CMakeBuilder = {}
@@ -183,43 +102,87 @@ function CMakeBuilder:new(o, package_name)
     setmetatable(o, self)
     self.__index = self
 
-    -- Tables with string values
+    -- Tables with string values, for *_platforms tables, only values in
+    -- rock2cmake_platform are inserted
     self.errors = {}
     self.supported_platforms = {}
     self.unsupported_platforms = {}
 
-    -- Table which contains preprocessed rockspec "build" table, entries
-    -- install.{lua|lib|conf|bin} - as in rockspec
-    -- copy_directories - as in rockspec
-    -- lua_modules - table with module name as key and string value (path to .lua source)
-    -- cxx_modules - table with module name as key and table values as in rockspec
-    --                       (sources, libraries, defines, incdirs, libdirs)
-    self.builtin = {}
-    -- Table where key is representing LuaRocks platform string and value is table as described
-    -- in self.builtin
-    self.per_platform_builtin = {}
+    -- Variables created from rockspec definitions, ["variable_name"] = "value"
+    --
+    -- Variables not depending on module name have their names formed from rockspec
+    -- table hierarchy with dots replaced by underscores, for example BUILD_INSTALL_LUA
+    --
+    -- Variables depending on module name have form of
+    -- MODULENAME_{SOURCES|LIBRARIES|DEFINES|INCDIRS|LIBDIRS}
+    self.cmake_variables = {}
+    self.override_cmake_variables = {}
+
+    -- Tables containing only names of targets, override_*_targets can contain default
+    -- targets, target is platform specific only if it is contained in override_*_targets and not in
+    -- corresponding targets table
+    self.lua_targets = {}
+    self.override_lua_targets = {}
+    self.cxx_targets = {}
+    self.override_cxx_targets = {}
 
     self.package_name = package_name
     return o
 end
 
-function CMakeBuilder:fatal_error(platform)
-    table.insert(self.errors, platform)
+function CMakeBuilder:platform_valid(platform)
+    if rock2cmake_platform[platform] == nil then
+        fatal_error("CMake alternative to platform '" .. platform .. "' was not defined," ..
+            "cmake actions for this platform were not generated")
+        return nil
+    end
+
+    return true
+end
+
+function CMakeBuilder:fatal_error(message)
+    table.insert(self.errors, message)
 end
 
 function CMakeBuilder:add_unsupported_platform(platform)
-    table.insert(self.unsupported_platforms, platform)
+    if platform_valid(platform) then
+        table.insert(self.unsupported_platforms, platform)
+    end
 end
 
 function CMakeBuilder:add_supported_platform(platform)
-    table.insert(self.supported_platforms, platform)
+    if platform_valid(platform) then
+        table.insert(self.supported_platforms, platform)
+    end
 end
 
-function CMakeBuilder:add_builtin_configuration(data, platform)
+function CMakeBuilder:set_cmake_variable(name, value, platform)
     if platform ~= nil then
-        self.per_platform_builtin[platform] = data
+        if platform_valid(platform) then
+            self.override_cmake_variables[platform][name] = value
+        end
     else
-        self.builtin = data
+        self.cmake_variables[name] = value
+    end
+end
+
+function CMakeBuilder:add_lua_module(name, platform)
+    if platform ~= nil then
+        if platform_valid(platform) then
+            table.insert(self.lua_targets[platform], name)
+        end
+    else
+        table.insert(tbl.override_lua_targets, name)
+    end
+end
+
+function CMakeBuilder:add_cxx_target(name, platform)
+    if platform ~= nil then
+        if platform_valid(platform) then
+            table.insert(self.cxx_targets[platform], name)
+        end
+    else
+        table.insert(self.override_cxx_targets, name)
     end
 end
 
@@ -252,16 +215,65 @@ function CMakeBuilder:generate()
         res = res .. supported_platform_check:substitute({expr = supported_platforms_check_str})
     end
 
-    -- Platform overrides if present
-    for platform, build in pairs(self.per_platform_builtin or {}) do
-        res = res .. platform_override_intro:substitute({platform = rock2cmake_platform[platform]})
-        res = res .. generate_builtin(build)
-        res = res .. "endif()\n\n"
+    -- Default (not overriden) variables
+    for name, value in pairs(self.cmake_variables) do
+        res = res .. set_variable:substitute({name = name, value = value})
     end
 
-    res = res .. platform_not_overriden_intro:substitute({})
-    res = res .. generate_builtin(self.builtin)
-    res = res .. "endif()\n"
+    -- Platform overrides if present
+    for platform, variables in pairs(self.override_cmake_variables) do
+        local definitions = ""
+        for name, value in pairs(variables) do
+            definitions = definitions .. ident .. set_variable:substitute({name = name, value = value})
+        end
+
+        res = res .. platform_specific_block:substitute(platform = platform, definitions = definitions)
+    end
+
+    -- install.{lua|conf|bin|lib} and copy_directories
+    res = res .. build_install_copy:substitute({dollar = "$"})
+
+    -- Lua targets, install only
+    for _, name in pairs(self.lua_targets) do
+        -- Force install file as name.lua, rename if needed
+        res = res .. install_lua_module:substitute({name = name, dest = name:gsub("%.", "/"),
+            new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
+    end
+
+    -- Platform specific Lua targets
+    for platform, targets in pairs(self.override_lua_targets) do
+        local definitions = ""
+        for _, name in pairs(targets) do
+            if self.lua_targets[name] == nil then
+                -- Force install file as name.lua, rename if needed
+                definitions = definitions .. ident .. install_lua_module:substitute({name = name, dest = name:gsub("%.", "/"),
+                    new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
+            end
+        end
+
+        if definitions ~= "" then
+            res = res .. platform_specific_block:substitute(platform = platform, definitions = definitions)
+        end
+    end
+
+    -- Cxx targets
+    for _, name in pairs(self.cxx_targets) do
+        res = res .. cxx_module:substitute({name = name, dollar = "$"})
+    end
+
+    -- Platform specific cxx targets
+    for platform, targets in pairs(self.override_cxx_targets) do
+        local definitions = ""
+        for _, name in pairs(targets) do
+            if self.cxx_targets[name] == nil then
+                res = res .. cxx_module:substitute({name = name, dollar = "$"})
+            end
+        end
+
+        if definitions ~= "" then
+            res = res .. platform_specific_block:substitute(platform = platform, definitions = definitions)
+        end
+    end
 
     return res
 end
