@@ -62,17 +62,16 @@ set(${name} ${value})
 
 local platform_specific_block = Template[[
 if (${platform})
-${definitions}
-endif()
+${definitions}endif()
 
 ]]
 
 local build_install_copy = Template[[
 install(FILES ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_LUA} DESTINATION ${dollar}{INSTALL_LMOD})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_LIB} DESTINATION ${dollar}{INSTALL_LIB})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_CONF} DESTINATION ${dollar}{INSTALL_ETC})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_BIN} DESTINATION ${dollar}{INSTALL_BIN})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_lua} DESTINATION ${dollar}{INSTALL_LMOD})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_lib} DESTINATION ${dollar}{INSTALL_LIB})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_conf} DESTINATION ${dollar}{INSTALL_ETC})
+install(DIRECTORY ${dollar}{BUILD_INSTALL_bin} DESTINATION ${dollar}{INSTALL_BIN})
 
 ]]
 
@@ -111,7 +110,7 @@ function CMakeBuilder:new(o, package_name)
     -- Variables created from rockspec definitions, ["variable_name"] = "value"
     --
     -- Variables not depending on module name have their names formed from rockspec
-    -- table hierarchy with dots replaced by underscores, for example BUILD_INSTALL_LUA
+    -- table hierarchy with dots replaced by underscores, for example BUILD_INSTALL_lua
     --
     -- Variables depending on module name have form of
     -- MODULENAME_{SOURCES|LIBRARIES|DEFINES|INCDIRS|LIBDIRS}
@@ -145,45 +144,44 @@ function CMakeBuilder:fatal_error(message)
 end
 
 function CMakeBuilder:add_unsupported_platform(platform)
-    if platform_valid(platform) then
+    if self:platform_valid(platform) then
         table.insert(self.unsupported_platforms, platform)
     end
 end
 
 function CMakeBuilder:add_supported_platform(platform)
-    if platform_valid(platform) then
+    if self:platform_valid(platform) then
         table.insert(self.supported_platforms, platform)
     end
 end
 
-function CMakeBuilder:set_cmake_variable(name, value, platform)
+function CMakeBuilder:_internal_set_value(tbl, tbl_override, name, value, platform)
     if platform ~= nil then
-        if platform_valid(platform) then
-            self.override_cmake_variables[platform][name] = value
+        if self:platform_valid(platform) then
+            if tbl_override[platform] == nil then
+                tbl_override[platform] = {}
+            end
+
+            tbl_override[platform][name] = value
         end
     else
-        self.cmake_variables[name] = value
+        tbl[name] = value
     end
+end
+
+function CMakeBuilder:set_cmake_variable(name, value, platform)
+    self:_internal_set_value(self.cmake_variables, self.override_cmake_variables,
+        name, value, platform)
 end
 
 function CMakeBuilder:add_lua_module(name, platform)
-    if platform ~= nil then
-        if platform_valid(platform) then
-            table.insert(self.lua_targets[platform], name)
-        end
-    else
-        table.insert(tbl.override_lua_targets, name)
-    end
+    self:_internal_set_value(self.lua_targets, self.override_lua_targets,
+        name, name, platform)
 end
 
 function CMakeBuilder:add_cxx_target(name, platform)
-    if platform ~= nil then
-        if platform_valid(platform) then
-            table.insert(self.cxx_targets[platform], name)
-        end
-    else
-        table.insert(self.override_cxx_targets, name)
-    end
+    self:_internal_set_value(self.cxx_targets, self.override_cxx_targets,
+        name, name, platform)
 end
 
 function CMakeBuilder:generate()
@@ -219,15 +217,16 @@ function CMakeBuilder:generate()
     for name, value in pairs(self.cmake_variables) do
         res = res .. set_variable:substitute({name = name, value = value})
     end
+    res = res .. "\n"
 
-    -- Platform overrides if present
+    -- Platform overriden variables
     for platform, variables in pairs(self.override_cmake_variables) do
         local definitions = ""
         for name, value in pairs(variables) do
             definitions = definitions .. ident .. set_variable:substitute({name = name, value = value})
         end
 
-        res = res .. platform_specific_block:substitute(platform = platform, definitions = definitions)
+        res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
     end
 
     -- install.{lua|conf|bin|lib} and copy_directories
@@ -239,6 +238,7 @@ function CMakeBuilder:generate()
         res = res .. install_lua_module:substitute({name = name, dest = name:gsub("%.", "/"),
             new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
     end
+    res = res .. "\n"
 
     -- Platform specific Lua targets
     for platform, targets in pairs(self.override_lua_targets) do
@@ -252,7 +252,7 @@ function CMakeBuilder:generate()
         end
 
         if definitions ~= "" then
-            res = res .. platform_specific_block:substitute(platform = platform, definitions = definitions)
+            res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
         end
     end
 
@@ -271,7 +271,7 @@ function CMakeBuilder:generate()
         end
 
         if definitions ~= "" then
-            res = res .. platform_specific_block:substitute(platform = platform, definitions = definitions)
+            res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
         end
     end
 

@@ -19,6 +19,26 @@ local function load_rockspec(filename, env)
     return load_table(str)
 end
 
+-- Concatenates string values from table into single space separated string
+-- If argument is nil, returns empty string
+-- If arguments is string itself, returns it
+local function table_concat(tbl)
+    if type(tbl) == "string" then
+        return tbl
+    end
+
+    res = ""
+    for _, v in pairs(tbl or {}) do
+        if res == "" then
+            res = v
+        else
+            res = res .. " " .. v
+        end
+    end
+
+    return res
+end
+
 -- For all entries in build table which are not present in override table, create their counterparts
 -- Except for table "platforms"
 local function fill_platform_override(override, build, recursive)
@@ -35,60 +55,61 @@ local function fill_platform_override(override, build, recursive)
     end
 end
 
-local function prepare_build_table(build)
-    local res = {install = {}}
+local process_builtin
 
-    -- Copy equivalent fields
-    if build.install ~= nil then
-        res.install.lua = build.install.lua
-        res.install.lib = build.install.lib
-        res.install.conf = build.install.conf
-        res.install.bin = build.install.bin
+local function process_install(cmake, install, platform)
+    for what, files in pairs(install) do
+        cmake:set_cmake_variable("BUILD_INSTALL_" .. what, table_concat(value), platform)
     end
-
-    res.copy_directories = build.copy_directories
-
-    -- Divide modules into two different tables (cxx and lua)
-    res.lua_modules = {}
-    res.cxx_modules = {}
-    for name, info in pairs(build.modules) do
-        -- Pathname of Lua file or C source, for modules based on single source file
-        if type(info) == "string" then
-            local ext = info:match(".([^.]+)$")
-            if ext == "lua" then
-                res.lua_modules[name] = info
-            else
-                res.cxx_modules[name] = {sources = {info}}
-            end
-        -- Two options:
-        -- array of strings - pathnames of C sources
-        -- table - possible fields sources, libraries, defines, incdirs, libdirs
-        elseif type(info) == "table" then
-            if type(info.sources) == "string" then
-                info.sources = { info.sources }
-            end
-
-            if type(info.libraries) == "string" then
-                info.libraries = { info.libraries }
-            end
-
-            res.cxx_modules[name] = {sources = info.sources, libraries = info.libraries,
-                defines = info.defines, incdirs = info.incdirs, libdirs = info.libdirs}
-        end
-    end
-
-    return res
 end
 
-local function process_builtin(cmake, rockspec)
-    cmake:add_builtin_configuration(prepare_build_table(rockspec.build))
+local function process_module(cmake, name, info, platform)
+    -- Pathname of Lua file or C source, for modules based on single source file
+    if type(info) == "string" then
+        local ext = info:match(".([^.]+)$")
+        if ext == "lua" then
+            cmake:add_lua_module(name, platform)
+        else
+            cmake:add_cxx_target(name, platform)
+        end
 
-    -- Process per-platform overrides
-    if rockspec.build.platforms ~= nil then
-        for platform, build in pairs(rockspec.build.platforms) do
-            -- For each platform override, merge it with rockspec.build
-            fill_platform_override(build, rockspec.build)
-            cmake:add_builtin_configuration(prepare_build_table(build), platform)
+        cmake:set_cmake_variable(name .. "_SOURCES", info, platform)
+    -- Two options:
+    -- array of strings - pathnames of C sources
+    -- table - possible fields sources, libraries, defines, incdirs, libdirs
+    elseif type(info) == "table" then
+        cmake:add_cxx_target(name, platform)
+        cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info.sources), platform)
+        cmake:set_cmake_variable(name .. "_LIBRARIES", table_concat(info.libraries), platform)
+        cmake:set_cmake_variable(name .. "_DEFINES", table_concat(info.defines), platform)
+        cmake:set_cmake_variable(name .. "_INCDIRS", table_concat(info.incdirs), platform)
+        cmake:set_cmake_variable(name .. "_LIBDIRS", table_concat(info.libdirs), platform)
+    end
+end
+
+local function process_modules(cmake, modules, platform)
+    for name, info in pairs(modules) do
+        process_module(cmake, name, info, platform)
+    end
+end
+
+local function process_platform_overrides(cmake, platforms)
+    for platform, build in pairs(platforms) do
+        process_builtin(cmake, build, platform)
+    end
+end
+
+process_builtin = function(cmake, build, platform)
+    for key, value in pairs(build) do
+        if key == "install" then
+            process_install(cmake, value, platform)
+        elseif key == "copy_directories" then
+            cmake:set_cmake_variable("BUILD_COPY_DIRECTORIES", table_concat(value), platform)
+        elseif key == "modules" then
+            process_modules(cmake, value, platform)
+        elseif key == "platforms" then
+            assert(platform == nil)
+            process_platform_overrides(cmake, value)
         end
     end
 end
@@ -117,7 +138,7 @@ else
         end
 
         if rockspec.build.type == "builtin" then
-            process_builtin(cmake, rockspec)
+            process_builtin(cmake, rockspec.build)
         elseif rockspec.build.type == "cmake" then
             cmake:fatal_error("Rockspec build type is cmake, please use the attached one")
         else
