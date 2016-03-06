@@ -23,7 +23,7 @@ cmake_minimum_required(VERSION 3.1)
 
 project(${package_name} C CXX)
 
-find_package(Lua)
+find_package(Lua REQUIRED)
 
 ## INSTALL DEFAULTS (Relative to CMAKE_INSTALL_PREFIX)
 # Primary paths
@@ -67,11 +67,11 @@ ${definitions}endif()
 ]]
 
 local build_install_copy = Template[[
-install(FILES ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_lua} DESTINATION ${dollar}{INSTALL_LMOD})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_lib} DESTINATION ${dollar}{INSTALL_LIB})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_conf} DESTINATION ${dollar}{INSTALL_ETC})
-install(DIRECTORY ${dollar}{BUILD_INSTALL_bin} DESTINATION ${dollar}{INSTALL_BIN})
+install(DIRECTORY ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
+install(FILES ${dollar}{BUILD_INSTALL_lua} DESTINATION ${dollar}{INSTALL_LMOD})
+install(FILES ${dollar}{BUILD_INSTALL_lib} DESTINATION ${dollar}{INSTALL_LIB})
+install(FILES ${dollar}{BUILD_INSTALL_conf} DESTINATION ${dollar}{INSTALL_ETC})
+install(FILES ${dollar}{BUILD_INSTALL_bin} DESTINATION ${dollar}{INSTALL_BIN})
 
 ]]
 
@@ -86,9 +86,9 @@ foreach(LIBRARY ${dollar}{${name}_LIBRARIES})
     find_library(${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
 endforeach(LIBRARY)
 
-target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS})
+target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS} ${dollar}{LUA_INCLUDE_DIRS} ${dollar}{LUA_INCLUDE_DIR})
 target_compile_definitions(${name} PRIVATE ${dollar}{${name}_DEFINES})
-target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES})
+target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES} ${dollar}{LUA_LIBRARIES})
 install(TARGETS ${name} DESTINATION ${dollar}{INSTALL_CMOD})
 
 ]]
@@ -170,6 +170,10 @@ function CMakeBuilder:_internal_set_value(tbl, tbl_override, name, value, platfo
 end
 
 function CMakeBuilder:set_cmake_variable(name, value, platform)
+    if value == "" then
+        return
+    end
+
     self:_internal_set_value(self.cmake_variables, self.override_cmake_variables,
         name, value, platform)
 end
