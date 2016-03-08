@@ -1,5 +1,4 @@
 local Template = require 'pl.text'.Template
-local subst = require 'pl.template'.substitute
 
 module("rockspec2cmake", package.seeall)
 
@@ -7,12 +6,14 @@ module("rockspec2cmake", package.seeall)
 local rock2cmake_platform =
 {
     ["unix"] = "UNIX",
+    ["linux"] = "UNIX",
+    ["freebsd"] = "UNIX",
+    ["macosx"] = "APPLE",
     ["windows"] = "WIN32",
     ["win32"] = "WIN32",
+    ["mingw32"] = "WIN32",
+    ["msys"] = "WIN32",
     ["cygwin"] = "CYGWIN",
-    ["macosx"] = "APPLE",
-    ["linux"] = "UNIX", -- ?
-    ["freebsd"] = "UNIX" -- ?
 }
 
 local ident = "    "
@@ -37,7 +38,7 @@ set(INSTALL_CMOD ${dollar}{INSTALL_LIB}/lua CACHE PATH "Directory to install Lua
 
 ]]
 
-local fatal_error = Template[[
+local fatal_error_msg = Template[[
 message(FATAL_ERROR "${message}")
 
 ]]
@@ -131,7 +132,7 @@ end
 
 function CMakeBuilder:platform_valid(platform)
     if rock2cmake_platform[platform] == nil then
-        fatal_error("CMake alternative to platform '" .. platform .. "' was not defined," ..
+        self:fatal_error("CMake alternative to platform '" .. platform .. "' was not defined," ..
             "cmake actions for this platform were not generated")
         return nil
     end
@@ -195,7 +196,7 @@ function CMakeBuilder:generate()
 
     -- Print all fatal errors at the beginning
     for _, error_msg in pairs(self.errors) do
-        res = res .. fatal_error:substitute({message = error_msg})
+        res = res .. fatal_error_msg:substitute({message = error_msg})
     end
 
     -- Unsupported platforms
@@ -270,7 +271,7 @@ function CMakeBuilder:generate()
         local definitions = ""
         for _, name in pairs(targets) do
             if self.cxx_targets[name] == nil then
-                res = res .. cxx_module:substitute({name = name, dollar = "$"})
+                definitions = definitions .. cxx_module:substitute({name = name, dollar = "$"})
             end
         end
 

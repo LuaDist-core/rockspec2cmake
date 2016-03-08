@@ -39,22 +39,6 @@ local function table_concat(tbl)
     return res
 end
 
--- For all entries in build table which are not present in override table, create their counterparts
--- Except for table "platforms"
-local function fill_platform_override(override, build, recursive)
-    for k, v in pairs(build) do
-        if recursive ~= nil or k ~= "platforms" then
-            -- Recursively merge tables
-            if type(v) == "table" and type(override[k] or false) == "table" then
-                fill_platform_override(override[k], build[k], true)
-            -- Don't override value with table
-            elseif override[k] == nil then
-                override[k] = v
-            end
-        end
-    end
-end
-
 local process_builtin
 
 local function process_install(cmake, install, platform)
@@ -79,11 +63,16 @@ local function process_module(cmake, name, info, platform)
     -- table - possible fields sources, libraries, defines, incdirs, libdirs
     elseif type(info) == "table" then
         cmake:add_cxx_target(name, platform)
-        cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info.sources), platform)
-        cmake:set_cmake_variable(name .. "_LIBRARIES", table_concat(info.libraries), platform)
-        cmake:set_cmake_variable(name .. "_DEFINES", table_concat(info.defines), platform)
-        cmake:set_cmake_variable(name .. "_INCDIRS", table_concat(info.incdirs), platform)
-        cmake:set_cmake_variable(name .. "_LIBDIRS", table_concat(info.libdirs), platform)
+        
+        if info.sources == nil then
+            cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info), platform)
+        else
+            cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info.sources), platform)
+            cmake:set_cmake_variable(name .. "_LIBRARIES", table_concat(info.libraries), platform)
+            cmake:set_cmake_variable(name .. "_DEFINES", table_concat(info.defines), platform)
+            cmake:set_cmake_variable(name .. "_INCDIRS", table_concat(info.incdirs), platform)
+            cmake:set_cmake_variable(name .. "_LIBDIRS", table_concat(info.libdirs), platform)
+        end
     end
 end
 
@@ -137,7 +126,9 @@ else
             end
         end
 
-        if rockspec.build.type == "builtin" then
+        if rockspec.build == nil then
+            cmake:fatal_error("Rockspec does not contain build information")
+        elseif rockspec.build.type == "builtin" then
             process_builtin(cmake, rockspec.build)
         elseif rockspec.build.type == "cmake" then
             cmake:fatal_error("Rockspec build type is cmake, please use the attached one")
