@@ -16,8 +16,6 @@ local rock2cmake_platform =
     ["cygwin"] = "CYGWIN",
 }
 
-local ident = "    "
-
 local intro = Template[[
 # Generated Cmake file begin
 cmake_minimum_required(VERSION 3.1)
@@ -91,8 +89,12 @@ target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS} ${dollar}{
 target_compile_definitions(${name} PRIVATE ${dollar}{${name}_DEFINES})
 target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES} ${dollar}{LUA_LIBRARIES})
 install(TARGETS ${name} DESTINATION ${dollar}{INSTALL_CMOD})
-
 ]]
+
+local function indent(str)
+    local _indent = "    "
+    return _indent .. str:gsub("\n", "\n" .. _indent):gsub(_indent .. "$", "")
+end
 
 -- CMakeBuilder
 CMakeBuilder = {}
@@ -141,7 +143,7 @@ function CMakeBuilder:platform_valid(platform)
 end
 
 function CMakeBuilder:fatal_error(message)
-    table.insert(self.errors, message)
+    self.errors[message] = true
 end
 
 function CMakeBuilder:add_unsupported_platform(platform)
@@ -195,7 +197,7 @@ function CMakeBuilder:generate()
     res = res .. intro:substitute({package_name = self.package_name, dollar = "$"})
 
     -- Print all fatal errors at the beginning
-    for _, error_msg in pairs(self.errors) do
+    for error_msg, _  in pairs(self.errors) do
         res = res .. fatal_error_msg:substitute({message = error_msg})
     end
 
@@ -228,7 +230,7 @@ function CMakeBuilder:generate()
     for platform, variables in pairs(self.override_cmake_variables) do
         local definitions = ""
         for name, value in pairs(variables) do
-            definitions = definitions .. ident .. set_variable:substitute({name = name, value = value})
+            definitions = definitions .. indent(set_variable:substitute({name = name, value = value}))
         end
 
         res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
@@ -251,8 +253,8 @@ function CMakeBuilder:generate()
         for _, name in pairs(targets) do
             if self.lua_targets[name] == nil then
                 -- Force install file as name.lua, rename if needed
-                definitions = definitions .. ident .. install_lua_module:substitute({name = name, dest = name:gsub("%.", "/"),
-                    new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
+                definitions = definitions .. indent(install_lua_module:substitute({name = name, dest = name:gsub("%.", "/"),
+                    new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"}))
             end
         end
 
@@ -271,7 +273,7 @@ function CMakeBuilder:generate()
         local definitions = ""
         for _, name in pairs(targets) do
             if self.cxx_targets[name] == nil then
-                definitions = definitions .. cxx_module:substitute({name = name, dollar = "$"})
+                definitions = definitions .. indent(cxx_module:substitute({name = name, dollar = "$"}))
             end
         end
 
