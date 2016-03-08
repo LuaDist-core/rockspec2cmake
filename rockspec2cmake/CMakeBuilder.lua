@@ -31,8 +31,8 @@ set(INSTALL_LIB lib CACHE PATH "Where to install libraries to.")
 set(INSTALL_ETC etc CACHE PATH "Where to store configuration files")
 set(INSTALL_SHARE share CACHE PATH "Directory for shared data.")
 
-set(INSTALL_LMOD ${dollar}{INSTALL_LIB}/lua CACHE PATH "Directory to install Lua modules.")
-set(INSTALL_CMOD ${dollar}{INSTALL_LIB}/lua CACHE PATH "Directory to install Lua binary modules.")
+set(INSTALL_LMOD ${dollar}{INSTALL_LIB}/lua/${dollar}{LUA_VERSION_MAJOR}.${dollar}{LUA_VERSION_MINOR} CACHE PATH "Directory to install Lua modules.")
+set(INSTALL_CMOD ${dollar}{INSTALL_LIB}/lua/${dollar}{LUA_VERSION_MAJOR}.${dollar}{LUA_VERSION_MINOR} CACHE PATH "Directory to install Lua binary modules.")
 
 ]]
 
@@ -79,7 +79,7 @@ install(FILES ${dollar}{${name}_SOURCES} DESTINATION ${dollar}{INSTALL_LMOD}/${d
 ]]
 
 local cxx_module = Template [[
-add_library(${name} ${dollar}{${name}_SOURCES})
+add_library(${name} SHARED ${dollar}{${name}_SOURCES})
 
 foreach(LIBRARY ${dollar}{${name}_LIB_NAMES})
     find_library(${name}_${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
@@ -89,6 +89,8 @@ endforeach(LIBRARY)
 target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS} ${dollar}{LUA_INCLUDE_DIRS} ${dollar}{LUA_INCLUDE_DIR})
 target_compile_definitions(${name} PRIVATE ${dollar}{${name}_DEFINES})
 target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES} ${dollar}{LUA_LIBRARIES})
+# Do not prefix "lib" before target name
+set_target_properties(${name} PROPERTIES PREFIX "")
 install(TARGETS ${name} DESTINATION ${dollar}{INSTALL_CMOD})
 ]]
 
@@ -242,8 +244,11 @@ function CMakeBuilder:generate()
 
     -- Lua targets, install only
     for _, name in pairs(self.lua_targets) do
+        -- Everything until last dot (a.b.c -> a.b)
+        local dest = name:match("^(.*)%.")
+
         -- Force install file as name.lua, rename if needed
-        res = res .. install_lua_module:substitute({name = name, dest = name:gsub("%.", "/"),
+        res = res .. install_lua_module:substitute({name = name, dest = (dest or ""):gsub("%.", "/"),
             new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
     end
     res = res .. "\n"
