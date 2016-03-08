@@ -81,8 +81,9 @@ install(FILES ${dollar}{${name}_SOURCES} DESTINATION ${dollar}{INSTALL_LMOD}/${d
 local cxx_module = Template [[
 add_library(${name} ${dollar}{${name}_SOURCES})
 
-foreach(LIBRARY ${dollar}{${name}_LIBRARIES})
-    find_library(${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
+foreach(LIBRARY ${dollar}{${name}_LIB_NAMES})
+    find_library(${name}_${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
+    list(APPEND ${name}_LIBRARIES ${name}_${dollar}{LIBRARY})
 endforeach(LIBRARY)
 
 target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS} ${dollar}{LUA_INCLUDE_DIRS} ${dollar}{LUA_INCLUDE_DIR})
@@ -116,7 +117,7 @@ function CMakeBuilder:new(o, package_name)
     -- table hierarchy with dots replaced by underscores, for example BUILD_INSTALL_lua
     --
     -- Variables depending on module name have form of
-    -- MODULENAME_{SOURCES|LIBRARIES|DEFINES|INCDIRS|LIBDIRS}
+    -- MODULENAME_{SOURCES|LIB_NAMES|DEFINES|INCDIRS|LIBDIRS}
     self.cmake_variables = {}
     self.override_cmake_variables = {}
 
@@ -233,7 +234,7 @@ function CMakeBuilder:generate()
             definitions = definitions .. indent(set_variable:substitute({name = name, value = value}))
         end
 
-        res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
+        res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
     end
 
     -- install.{lua|conf|bin|lib} and copy_directories
@@ -259,7 +260,7 @@ function CMakeBuilder:generate()
         end
 
         if definitions ~= "" then
-            res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
+            res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
         end
     end
 
@@ -278,7 +279,7 @@ function CMakeBuilder:generate()
         end
 
         if definitions ~= "" then
-            res = res .. platform_specific_block:substitute({platform = platform, definitions = definitions})
+            res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
         end
     end
 

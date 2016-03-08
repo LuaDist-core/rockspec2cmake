@@ -1,6 +1,5 @@
 local load_table = require 'pl.pretty'.load
 local Template = require 'pl.text'.Template
-local subst = require 'pl.template'.substitute
 local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
 
 module("rockspec2cmake", package.seeall)
@@ -39,6 +38,16 @@ local function table_concat(tbl)
     return res
 end
 
+local function is_string_array(tbl)
+    for k, v in pairs(tbl) do
+        if type(k) ~= "number" or type(v) ~= "string" then
+            return nil
+        end
+    end
+
+    return true
+end
+
 local process_builtin
 
 local function process_install(cmake, install, platform)
@@ -63,12 +72,12 @@ local function process_module(cmake, name, info, platform)
     -- table - possible fields sources, libraries, defines, incdirs, libdirs
     elseif type(info) == "table" then
         cmake:add_cxx_target(name, platform)
-        
-        if info.sources == nil then
+
+        if is_string_array(info) then
             cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info), platform)
         else
             cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info.sources), platform)
-            cmake:set_cmake_variable(name .. "_LIBRARIES", table_concat(info.libraries), platform)
+            cmake:set_cmake_variable(name .. "_LIB_NAMES", table_concat(info.libraries), platform)
             cmake:set_cmake_variable(name .. "_DEFINES", table_concat(info.defines), platform)
             cmake:set_cmake_variable(name .. "_INCDIRS", table_concat(info.incdirs), platform)
             cmake:set_cmake_variable(name .. "_LIBDIRS", table_concat(info.libdirs), platform)
