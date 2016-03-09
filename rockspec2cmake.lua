@@ -21,7 +21,17 @@ end
 -- Concatenates string values from table into single space separated string
 -- If argument is nil, returns empty string
 -- If arguments is string itself, returns it
+-- If value to be concatenaded is in form of rockspec variable $(var),
+-- this function converts it to cmake variable ${var}
 local function table_concat(tbl)
+    local function try_convert_var(str)
+        if str:match("^%$%(.*%)$") then
+            return str:gsub("%(", "{"):gsub("%)", "}")
+        end
+
+        return str
+    end
+
     if type(tbl) == "string" then
         return tbl
     end
@@ -29,9 +39,9 @@ local function table_concat(tbl)
     res = ""
     for _, v in pairs(tbl or {}) do
         if res == "" then
-            res = v
+            res = try_convert_var(v)
         else
-            res = res .. " " .. v
+            res = res .. " " .. try_convert_var(v)
         end
     end
 
@@ -112,6 +122,19 @@ process_builtin = function(cmake, build, platform)
     end
 end
 
+local function process_ext_dep(cmake, ext_dep, platform)
+    for key, value in pairs(ext_dep) do
+        if key == "platforms" then
+            assert(platform == nil)
+            for platform, ext_dep2 in pairs(value) do
+                process_ext_dep(cmake, ext_dep2, platform)
+            end
+        else
+            cmake:add_ext_dep(key, platform)
+        end
+    end
+end
+
 if #arg ~= 1 then
     print("Expected one argument...")
 else
@@ -122,7 +145,7 @@ else
     else
         local cmake = CMakeBuilder:new(nil, rockspec.package)
 
-        -- Create check for case when we are using unsupported platform
+        -- Parse (un)supported platforms
         if rockspec.supported_platforms ~= nil then
             local supported_platforms_check_str = ""
             for _, plat in pairs(rockspec.supported_platforms) do
@@ -135,6 +158,12 @@ else
             end
         end
 
+        -- Parse external dependencies
+        if rockspec.external_dependencies ~= nil then
+            process_ext_dep(cmake, rockspec.external_dependencies)
+        end
+
+        -- Parse build rules
         if rockspec.build == nil then
             cmake:fatal_error("Rockspec does not contain build information")
         elseif rockspec.build.type == "builtin" then

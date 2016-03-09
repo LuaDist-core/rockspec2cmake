@@ -55,6 +55,13 @@ endif()
 
 ]]
 
+local find_ext_dep = Template [[
+find_package(${name})
+set(${name}_LIBDIR ${dollar}{${name}_LIBRARIES})
+set(${name}_INCDIR ${dollar}{${name}_INCLUDE_DIRS})
+
+]]
+
 local set_variable = Template [[
 set(${name} ${value})
 ]]
@@ -113,7 +120,16 @@ function CMakeBuilder:new(o, package_name)
     self.supported_platforms = {}
     self.unsupported_platforms = {}
 
-    -- Variables created from rockspec definitions, ["variable_name"] = "value"
+    -- Required external dependencies, each of them creates
+    -- name_LIBDIR and name_INCDIR cmake variables
+    --
+    -- These variables need to be generated before other cmake variables
+    -- because they can use them in their definitions
+    self.ext_deps = {}
+    self.override_ext_deps = {}
+
+    -- Variables generated from build rules (builtin only)
+    -- ["variable_name"] = "value"
     --
     -- Variables not depending on module name have their names formed from rockspec
     -- table hierarchy with dots replaced by underscores, for example BUILD_INSTALL_lua
@@ -194,6 +210,11 @@ function CMakeBuilder:add_cxx_target(name, platform)
         name, name, platform)
 end
 
+function CMakeBuilder:add_ext_dep(name, platform)
+    self:_internal_set_value(self.ext_deps, self.override_ext_deps,
+        name, name, platform)
+end
+
 function CMakeBuilder:generate()
     local res = ""
 
@@ -221,6 +242,20 @@ function CMakeBuilder:generate()
         end
 
         res = res .. supported_platform_check:substitute({expr = supported_platforms_check_str})
+    end
+
+    -- External dependencies
+    for name, _ in pairs(self.ext_deps) do
+        res = res .. find_ext_dep:substitute({name = name, dollar = "$"})
+    end
+
+    for platform, ext_deps in pairs(self.override_ext_deps) do
+        local definitions = ""
+        for name, _ in pairs(ext_deps) do
+            definitions = definitions .. indent(find_ext_dep:substitute({name = name, dollar = "$"}))
+        end
+
+        res = res .. platform_specific_block:substitute({platform = rock2cmake_platform[platform], definitions = definitions})
     end
 
     -- Default (not overriden) variables
