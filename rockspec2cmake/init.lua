@@ -1,10 +1,10 @@
-local load_table = require 'pl.pretty'.load
-local Template = require 'pl.text'.Template
+local pretty = require 'pl.pretty'
+local path = require 'pl.path'
 local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
 
 module("rockspec2cmake", package.seeall)
 
-local function load_rockspec(filename, env)
+local function load_rockspec(filename)
     local fd, err = io.open(filename)
     if not fd then
         return nil
@@ -14,15 +14,15 @@ local function load_rockspec(filename, env)
     if not str then
         return nil
     end
-    -- str = str:gsub("^#![^\n]*\n", "")
-    return load_table(str)
+    str = str:gsub("^#![^\n]*\n", "")
+    return pretty.load(str)
 end
 
--- Concatenates string values from table into single space separated string
--- If argument is nil, returns empty string
--- If arguments is string itself, returns it
+-- Concatenates string values from table into single space separated string.
+-- If argument is nil, returns empty string.
+-- If arguments is string itself, returns it.
 -- If value to be concatenaded is in form of rockspec variable $(var),
--- this function converts it to cmake variable ${var}
+-- converts it to cmake variable ${var}.
 local function table_concat(tbl)
     local function try_convert_var(str)
         if str:match("^%$%(.*%)$") then
@@ -135,45 +135,57 @@ local function process_ext_dep(cmake, ext_dep, platform)
     end
 end
 
-if #arg ~= 1 then
-    print("Expected one argument...")
-else
-    local rockspec = load_rockspec(arg[1])
+-- Lua interface for rockspec2cmake utility
+-- Generates cmake commands from given 'rockspec' table and returns them
+-- as string, or returns nil, error_message on error.
+-- If argument 'output_dir' is provided, this function creates file CMakeLists.txt
+-- in provided directory
+function process_rockspec(rockspec, output_dir)
+    assert(type(rockspec) == "table", "rockspec2cmake.process_rockspec: Argument 'rockspec' is not a table.")
+    assert(output_dir == nil or (type(output_dir) == "string" and path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
 
-    if not rockspec then
-        print("Failed to load rockspec file (" .. arg[1] .. ")")
-    else
-        local cmake = CMakeBuilder:new(nil, rockspec.package)
+    local cmake = CMakeBuilder:new(nil, rockspec.package)
 
-        -- Parse (un)supported platforms
-        if rockspec.supported_platforms ~= nil then
-            local supported_platforms_check_str = ""
-            for _, plat in pairs(rockspec.supported_platforms) do
-                local neg, plat = plat:match("^(!?)(.*)")
-                if neg == "!" then
-                    cmake:add_unsupported_platform(plat)
-                else
-                    cmake:add_supported_platform(plat)
-                end
+    -- Parse (un)supported platforms
+    if rockspec.supported_platforms ~= nil then
+        local supported_platforms_check_str = ""
+        for _, plat in pairs(rockspec.supported_platforms) do
+            local neg, plat = plat:match("^(!?)(.*)")
+            if neg == "!" then
+                cmake:add_unsupported_platform(plat)
+            else
+                cmake:add_supported_platform(plat)
             end
         end
+    end
 
-        -- Parse external dependencies
-        if rockspec.external_dependencies ~= nil then
-            process_ext_dep(cmake, rockspec.external_dependencies)
+    -- Parse external dependencies
+    if rockspec.external_dependencies ~= nil then
+        process_ext_dep(cmake, rockspec.external_dependencies)
+    end
+
+    -- Parse build rules
+    if rockspec.build == nil then
+        return nil, "Rockspec does not contain build information"
+    elseif rockspec.build.type == "builtin" then
+        process_builtin(cmake, rockspec.build)
+    elseif rockspec.build.type == "cmake" then
+        return nil, "Rockspec build type is cmake, please use the attached one"
+    else
+        return nil, "Unhandled rockspec build type"
+    end
+
+    local cmake_commands = cmake:generate()
+
+    if output_dir ~= nil then
+        local output_file = io.open(path.join(output_dir, "CMakeLists.txt"), "w")
+        if not output_file then
+            return nil, "Error creating CMakeLists.txt file in '" .. output_dir .. "'"
         end
 
-        -- Parse build rules
-        if rockspec.build == nil then
-            cmake:fatal_error("Rockspec does not contain build information")
-        elseif rockspec.build.type == "builtin" then
-            process_builtin(cmake, rockspec.build)
-        elseif rockspec.build.type == "cmake" then
-            cmake:fatal_error("Rockspec build type is cmake, please use the attached one")
-        else
-            cmake:fatal_error("Unhandled rockspec build type")
-        end
+        output_file:write(cmake_commands)
+        output_file:close()
+    end
 
-        print(cmake:generate())
-     end
+    return cmake_commands
 end
