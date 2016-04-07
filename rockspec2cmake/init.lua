@@ -18,12 +18,14 @@ local function load_rockspec(filename)
     return pretty.load(str)
 end
 
--- Concatenates string values from table into single space separated string.
+-- Converts lua table into string useable for initialization of CMake list.
+-- Encloses each value of table in double quotes ("), escapes double quotes
+-- in values and concatenates them using single space.
 -- If argument is nil, returns empty string.
--- If arguments is string itself, returns it.
--- If value to be concatenaded is in form of rockspec variable $(var),
+-- If arguments is string itself, processes it as one element table.
+-- If value in table is in form of rockspec variable $(var),
 -- converts it to cmake variable ${var}.
-local function table_concat(tbl)
+local function table_to_cmake_list(tbl)
     local function try_convert_var(str)
         if str:match("^%$%(.*%)$") then
             return str:gsub("%(", "{"):gsub("%)", "}")
@@ -32,16 +34,20 @@ local function table_concat(tbl)
         return str
     end
 
+    local function quote_escape(str)
+        return "\"" .. str:gsub("\"", "\\\"") .. "\""
+    end
+
     if type(tbl) == "string" then
-        return tbl
+        tbl = {tbl}
     end
 
     res = ""
     for _, v in pairs(tbl or {}) do
         if res == "" then
-            res = try_convert_var(v)
+            res = quote_escape(try_convert_var(v))
         else
-            res = res .. " " .. try_convert_var(v)
+            res = res .. " " .. quote_escape(try_convert_var(v))
         end
     end
 
@@ -62,7 +68,7 @@ local process_builtin
 
 local function process_install(cmake, install, platform)
     for what, files in pairs(install) do
-        cmake:set_cmake_variable("BUILD_INSTALL_" .. what, table_concat(value), platform)
+        cmake:set_cmake_variable("BUILD_INSTALL_" .. what, table_to_cmake_list(value), platform)
     end
 end
 
@@ -84,13 +90,13 @@ local function process_module(cmake, name, info, platform)
         cmake:add_cxx_target(name, platform)
 
         if is_string_array(info) then
-            cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info), platform)
+            cmake:set_cmake_variable(name .. "_SOURCES", table_to_cmake_list(info), platform)
         else
-            cmake:set_cmake_variable(name .. "_SOURCES", table_concat(info.sources), platform)
-            cmake:set_cmake_variable(name .. "_LIB_NAMES", table_concat(info.libraries), platform)
-            cmake:set_cmake_variable(name .. "_DEFINES", table_concat(info.defines), platform)
-            cmake:set_cmake_variable(name .. "_INCDIRS", table_concat(info.incdirs), platform)
-            cmake:set_cmake_variable(name .. "_LIBDIRS", table_concat(info.libdirs), platform)
+            cmake:set_cmake_variable(name .. "_SOURCES", table_to_cmake_list(info.sources), platform)
+            cmake:set_cmake_variable(name .. "_LIB_NAMES", table_to_cmake_list(info.libraries), platform)
+            cmake:set_cmake_variable(name .. "_DEFINES", table_to_cmake_list(info.defines), platform)
+            cmake:set_cmake_variable(name .. "_INCDIRS", table_to_cmake_list(info.incdirs), platform)
+            cmake:set_cmake_variable(name .. "_LIBDIRS", table_to_cmake_list(info.libdirs), platform)
         end
     end
 end
@@ -112,7 +118,7 @@ process_builtin = function(cmake, build, platform)
         if key == "install" then
             process_install(cmake, value, platform)
         elseif key == "copy_directories" then
-            cmake:set_cmake_variable("BUILD_COPY_DIRECTORIES", table_concat(value), platform)
+            cmake:set_cmake_variable("BUILD_COPY_DIRECTORIES", table_to_cmake_list(value), platform)
         elseif key == "modules" then
             process_modules(cmake, value, platform)
         elseif key == "platforms" then
