@@ -188,7 +188,7 @@ function process_rockspec(rockspec, output_dir)
     elseif rockspec.build.type == "cmake" then
         return nil, "Rockspec build type is cmake, please use the attached one"
     else
-        return nil, "Unhandled rockspec build type"
+        return nil, "Unhandled rockspec build type: " .. rockspec.build.type
     end
 
     local cmake_commands = cmake:generate()
