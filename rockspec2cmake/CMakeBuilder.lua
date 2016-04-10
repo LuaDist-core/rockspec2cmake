@@ -73,10 +73,10 @@ ${definitions}endif()
 ]]
 
 local build_install_copy = Template[[
-install(DIRECTORY ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{CMAKE_INSTALL_PREFIX})
+install(DIRECTORY ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{INSTALL_SHARE}/${package_name})
 install(FILES ${dollar}{BUILD_INSTALL_lua} DESTINATION ${dollar}{INSTALL_LMOD})
 install(FILES ${dollar}{BUILD_INSTALL_lib} DESTINATION ${dollar}{INSTALL_LIB})
-install(FILES ${dollar}{BUILD_INSTALL_conf} DESTINATION ${dollar}{INSTALL_ETC})
+install(FILES ${dollar}{BUILD_INSTALL_conf} DESTINATION ${dollar}{INSTALL_ETC}/${package_name})
 install(FILES ${dollar}{BUILD_INSTALL_bin} DESTINATION ${dollar}{INSTALL_BIN})
 
 ]]
@@ -275,7 +275,7 @@ function CMakeBuilder:generate()
     end
 
     -- install.{lua|conf|bin|lib} and copy_directories
-    res = res .. build_install_copy:substitute({dollar = "$"})
+    res = res .. build_install_copy:substitute({package_name = self.package_name, dollar = "$"})
 
     -- Lua targets, install only
     for _, name in pairs(self.lua_targets) do
