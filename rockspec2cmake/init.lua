@@ -14,7 +14,11 @@ local function load_rockspec(filename)
     if not str then
         return nil
     end
+
+    -- Remove "#!/usr/bin lua" like lines since they are not valid Lua
+    -- but seem to be present in rockspec files
     str = str:gsub("^#![^\n]*\n", "")
+    str = str:gsub("\n#![^\n]*\n", "")
     return pretty.load(str)
 end
 
