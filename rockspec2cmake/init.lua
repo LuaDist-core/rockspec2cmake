@@ -72,10 +72,26 @@ local process_builtin
 local function process_install(cmake, install, platform)
     for what, files in pairs(install) do
         for key, src in pairs(files) do
-            local dst = key:gsub("%.", "/")
+            local dst, name
+
+            if type(key) == "string" then
+                -- Assume that key is in lua module format
+                if what == "lua" then
+                    dst = pl.path.dirname(key:gsub("%.", "/"))
+                    name = pl.path.basename(key:gsub("%.", "/")) .. ".lua"
+                else
+                    dst = pl.path.dirname(key)
+                    name = pl.path.basename(key)
+                end
+            else
+                dst = ""
+                name = pl.path.basename(src)
+            end
+
+
             cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_SRC", src, platform)
-            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_DST", pl.path.dirname(dst), platform)
-            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_RENAME", pl.path.basename(dst) .. ".lua", platform)
+            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_DST", dst, platform)
+            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_RENAME", name, platform)
             cmake:set_cmake_variable("BUILD_INSTALL_" .. what, key, platform, true)
         end
     end
