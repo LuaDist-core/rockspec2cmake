@@ -74,10 +74,20 @@ ${definitions}endif()
 
 local build_install_copy = Template[[
 install(DIRECTORY ${dollar}{BUILD_COPY_DIRECTORIES} DESTINATION ${dollar}{INSTALL_SHARE}/${package_name})
-install(FILES ${dollar}{BUILD_INSTALL_lua} DESTINATION ${dollar}{INSTALL_LMOD})
-install(FILES ${dollar}{BUILD_INSTALL_lib} DESTINATION ${dollar}{INSTALL_LIB})
-install(FILES ${dollar}{BUILD_INSTALL_conf} DESTINATION ${dollar}{INSTALL_ETC}/${package_name})
-install(FILES ${dollar}{BUILD_INSTALL_bin} DESTINATION ${dollar}{INSTALL_BIN})
+
+function(build_install KEYS DIR)
+    list(REMOVE_DUPLICATES KEYS)
+
+    foreach(KEY ${dollar}{${dollar}{KEYS}})
+        set(BASE_NAME ${dollar}{KEYS}_${dollar}{KEY})
+        install(FILES ${dollar}{${dollar}{BASE_NAME}_SRC} DESTINATION ${dollar}{DIR}/${dollar}{${dollar}{BASE_NAME}_DST} RENAME ${dollar}{${dollar}{BASE_NAME}_RENAME})
+    endforeach(KEY)
+endfunction(build_install)
+
+build_install(BUILD_INSTALL_lua ${dollar}{INSTALL_LMOD})
+build_install(BUILD_INSTALL_lib ${dollar}{INSTALL_LIB})
+build_install(BUILD_INSTALL_conf ${dollar}{INSTALL_ETC})
+build_install(BUILD_INSTALL_bin ${dollar}{INSTALL_BIN})
 
 ]]
 
@@ -177,27 +187,37 @@ function CMakeBuilder:add_supported_platform(platform)
     end
 end
 
-function CMakeBuilder:_internal_set_value(tbl, tbl_override, name, value, platform)
+function CMakeBuilder:_internal_set_value(tbl, tbl_override, name, value, platform, append)
     if platform ~= nil then
         if self:platform_valid(platform) then
             if tbl_override[platform] == nil then
                 tbl_override[platform] = {}
             end
 
-            tbl_override[platform][name] = value
+            if append ~= nil then
+                local old_value = (tbl_override[platform][name] and tbl_override[platform][name] .. ";") or ("${" .. name .. "};")
+                tbl_override[platform][name] = old_value .. value
+            else
+                tbl_override[platform][name] = value
+            end
         end
     else
-        tbl[name] = value
+        if append ~= nil then
+            local old_value = (tbl[name] and tbl[name] .. ";") or ("${" .. name .. "};")
+            tbl[name] = old_value .. value
+        else
+            tbl[name] = value
+        end
     end
 end
 
-function CMakeBuilder:set_cmake_variable(name, value, platform)
+function CMakeBuilder:set_cmake_variable(name, value, platform, append)
     if value == "" then
         return
     end
 
     self:_internal_set_value(self.cmake_variables, self.override_cmake_variables,
-        name, value, platform)
+        name, value, platform, append)
 end
 
 function CMakeBuilder:add_lua_module(name, platform)

@@ -1,5 +1,4 @@
-local pretty = require 'pl.pretty'
-local path = require 'pl.path'
+local pl = require "pl.import_into"()
 local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
 
 module("rockspec2cmake", package.seeall)
@@ -19,7 +18,7 @@ local function load_rockspec(filename)
     -- but seem to be present in rockspec files
     str = str:gsub("^#![^\n]*\n", "")
     str = str:gsub("\n#![^\n]*\n", "")
-    return pretty.load(str)
+    return pl.pretty.load(str)
 end
 
 -- Converts lua table into string useable for initialization of CMake list.
@@ -72,7 +71,13 @@ local process_builtin
 
 local function process_install(cmake, install, platform)
     for what, files in pairs(install) do
-        cmake:set_cmake_variable("BUILD_INSTALL_" .. what, table_to_cmake_list(value), platform)
+        for key, src in pairs(files) do
+            local dst = key:gsub("%.", "/")
+            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_SRC", src, platform)
+            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_DST", pl.path.dirname(dst), platform)
+            cmake:set_cmake_variable("BUILD_INSTALL_" .. what .. "_" .. key .. "_RENAME", pl.path.basename(dst) .. ".lua", platform)
+            cmake:set_cmake_variable("BUILD_INSTALL_" .. what, key, platform, true)
+        end
     end
 end
 
@@ -152,7 +157,7 @@ end
 -- in provided directory
 function process_rockspec(rockspec, output_dir)
     assert(type(rockspec) == "table", "rockspec2cmake.process_rockspec: Argument 'rockspec' is not a table.")
-    assert(output_dir == nil or (type(output_dir) == "string" and path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
+    assert(output_dir == nil or (type(output_dir) == "string" and pl.path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
 
     local cmake = CMakeBuilder:new(nil, rockspec.package)
 
@@ -189,7 +194,7 @@ function process_rockspec(rockspec, output_dir)
     local cmake_commands = cmake:generate()
 
     if output_dir ~= nil then
-        local output_file = io.open(path.join(output_dir, "CMakeLists.txt"), "w")
+        local output_file = io.open(pl.path.join(output_dir, "CMakeLists.txt"), "w")
         if not output_file then
             return nil, "Error creating CMakeLists.txt file in '" .. output_dir .. "'"
         end
