@@ -177,7 +177,8 @@ function process_rockspec(rockspec, output_dir)
     -- Parse build rules
     if rockspec.build == nil then
         return nil, "Rockspec does not contain build information"
-    elseif rockspec.build.type == "builtin" then
+    -- "none" build type can still contain "install" or "copy_directories" fields
+    elseif rockspec.build.type == "builtin" or rockspec.build.type == "none" then
         process_builtin(cmake, rockspec.build)
     elseif rockspec.build.type == "cmake" then
         return nil, "Rockspec build type is cmake, please use the attached one"
