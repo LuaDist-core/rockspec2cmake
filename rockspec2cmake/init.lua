@@ -26,12 +26,14 @@ end
 -- in values and concatenates them using single space.
 -- If argument is nil, returns empty string.
 -- If arguments is string itself, processes it as one element table.
--- If value in table is in form of rockspec variable $(var),
+-- If value in table is in form of rockspec variable $(var) or $var,
 -- converts it to cmake variable ${var}.
 local function table_to_cmake_list(tbl)
     local function try_convert_var(str)
         if str:match("^%$%(.*%)$") then
             return str:gsub("%(", "{"):gsub("%)", "}")
+        elseif str:match("^%$.*$") then
+            return str:gsub("^%$", "${") .. "}"
         end
 
         return str
