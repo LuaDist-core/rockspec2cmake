@@ -100,7 +100,7 @@ add_library(${name} SHARED ${dollar}{${name}_SOURCES})
 
 foreach(LIBRARY ${dollar}{${name}_LIB_NAMES})
     find_library(${name}_${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
-    list(APPEND ${name}_LIBRARIES ${name}_${dollar}{LIBRARY})
+    list(APPEND ${name}_LIBRARIES ${dollar}{LIBRARY})
 endforeach(LIBRARY)
 
 target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS} ${dollar}{LUA_INCLUDE_DIRS} ${dollar}{LUA_INCLUDE_DIR})
