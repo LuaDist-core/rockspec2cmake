@@ -1,25 +1,8 @@
-local pl = require "pl.import_into"()
-local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
-
 module("rockspec2cmake", package.seeall)
 
-local function load_rockspec(filename)
-    local fd, err = io.open(filename)
-    if not fd then
-        return nil
-    end
-    local str, err = fd:read("*all")
-    fd:close()
-    if not str then
-        return nil
-    end
+local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
+local pl = require "pl.import_into"()
 
-    -- Remove "#!/usr/bin lua" like lines since they are not valid Lua
-    -- but seem to be present in rockspec files
-    str = str:gsub("^#![^\n]*\n", "")
-    str = str:gsub("\n#![^\n]*\n", "")
-    return pl.pretty.load(str)
-end
 
 -- Converts lua table into string useable for initialization of CMake list.
 -- Encloses each value of table in double quotes ("), escapes double quotes
