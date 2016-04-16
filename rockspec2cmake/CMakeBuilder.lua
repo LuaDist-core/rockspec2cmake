@@ -108,6 +108,7 @@ target_compile_definitions(${name} PRIVATE ${dollar}{${name}_DEFINES})
 target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES} ${dollar}{LUA_LIBRARIES})
 # Do not prefix "lib" before target name
 set_target_properties(${name} PROPERTIES PREFIX "")
+set_target_properties(${name} PROPERTIES OUTPUT_NAME ${output_name})
 install(TARGETS ${name} DESTINATION ${dollar}{INSTALL_CMOD}/${dest})
 ]]
 
@@ -122,6 +123,14 @@ end
 -- a -> <empty string>
 local function path_from_lua_notation(str)
     return (str:match("^(.*)%.") or ""):gsub("%.", "/")
+end
+
+-- Converts string in lua package notation into name of such package
+-- Examples:
+-- a.b.c -> c
+-- a -> a
+local function name_from_lua_notation(str)
+    return str:match("([^.]+)$")
 end
 
 -- CMakeBuilder
@@ -309,7 +318,7 @@ function CMakeBuilder:generate()
     for _, name in pairs(self.lua_targets) do
         -- Force install file as name.lua, rename if needed
         res = res .. install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
-        new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"})
+        new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"})
     end
     res = res .. "\n"
 
@@ -320,7 +329,7 @@ function CMakeBuilder:generate()
             if self.lua_targets[name] == nil then
                 -- Force install file as name.lua, rename if needed
                 definitions = definitions .. indent(install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
-                new_name = name:match("([^.]+)$") .. ".lua", dollar = "$"}))
+                new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"}))
             end
         end
 
@@ -331,7 +340,8 @@ function CMakeBuilder:generate()
 
     -- Cxx targets
     for _, name in pairs(self.cxx_targets) do
-        res = res .. cxx_module:substitute({name = name, dest = path_from_lua_notation(name), dollar = "$"})
+        res = res .. cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
+            output_name = name_from_lua_notation(name), dollar = "$"})
     end
 
     -- Platform specific cxx targets
@@ -339,7 +349,8 @@ function CMakeBuilder:generate()
         local definitions = ""
         for _, name in pairs(targets) do
             if self.cxx_targets[name] == nil then
-                definitions = definitions .. indent(cxx_module:substitute({name = name, dest = path_from_lua_notation(name), dollar = "$"}))
+                definitions = definitions .. indent(cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
+                    output_name = name_from_lua_notation(name), dollar = "$"}))
             end
         end
 
