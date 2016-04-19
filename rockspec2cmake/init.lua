@@ -180,19 +180,25 @@ function process_rockspec(rockspec, output_dir)
         process_ext_dep(cmake, rockspec.external_dependencies)
     end
 
+    local cmake_commands = nil
+
     -- Parse build rules
     if rockspec.build == nil then
         return nil, "Rockspec does not contain build information"
     -- "none" build type can still contain "install" or "copy_directories" fields
     elseif rockspec.build.type == "builtin" or rockspec.build.type == "none" then
         process_builtin(cmake, rockspec.build)
+        cmake_commands = cmake:generate()
+    -- Use existing cmake
     elseif rockspec.build.type == "cmake" then
-        return nil, "Rockspec build type is cmake, please use the attached one"
+        if rockspec.build.cmake then
+            cmake_commands = rockspec.build.cmake
+        else
+            return nil, "Rockspec build type is cmake, please use the attached CMakeLists.txt"
+        end
     else
         return nil, "Unhandled rockspec build type: " .. rockspec.build.type
     end
-
-    local cmake_commands = cmake:generate()
 
     if output_dir ~= nil then
         local output_file = io.open(pl.path.join(output_dir, "CMakeLists.txt"), "w")
