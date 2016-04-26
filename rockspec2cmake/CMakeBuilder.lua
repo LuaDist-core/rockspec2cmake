@@ -22,6 +22,7 @@ cmake_minimum_required(VERSION 3.1)
 
 project(${package_name} C CXX)
 
+set(ENV{LUA_DIR} ${dollar}{CMAKE_INSTALL_PREFIX})
 find_package(Lua REQUIRED)
 
 ## INSTALL DEFAULTS (Relative to CMAKE_INSTALL_PREFIX)
