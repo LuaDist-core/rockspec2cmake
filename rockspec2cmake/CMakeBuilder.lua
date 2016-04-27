@@ -21,6 +21,7 @@ local intro = Template[[
 cmake_minimum_required(VERSION 3.1)
 
 project(${package_name} C CXX)
+set(${package_name}_VERSION ${package_version})
 
 set(ENV{LUA_DIR} ${dollar}{CMAKE_INSTALL_PREFIX})
 find_package(Lua REQUIRED)
@@ -136,11 +137,10 @@ end
 
 -- CMakeBuilder
 CMakeBuilder = {}
+CMakeBuilder.__index = CMakeBuilder
 
-function CMakeBuilder:new(o, package_name)
-    o = o or {}
-    setmetatable(o, self)
-    self.__index = self
+function CMakeBuilder.new(package_name, package_version)
+    local self = setmetatable({}, CMakeBuilder)
 
     -- Tables with string values, for *_platforms tables, only values in
     -- rock2cmake_platform are inserted
@@ -176,7 +176,8 @@ function CMakeBuilder:new(o, package_name)
     self.override_cxx_targets = {}
 
     self.package_name = package_name
-    return o
+    self.package_version = package_version
+    return self
 end
 
 function CMakeBuilder:platform_valid(platform)
@@ -256,7 +257,7 @@ end
 function CMakeBuilder:generate()
     local res = ""
 
-    res = res .. intro:substitute({package_name = self.package_name, dollar = "$"})
+    res = res .. intro:substitute({package_name = self.package_name, package_version = self.package_version, dollar = "$"})
 
     -- Print all fatal errors at the beginning
     for error_msg, _  in pairs(self.errors) do

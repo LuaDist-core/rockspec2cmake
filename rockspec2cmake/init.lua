@@ -160,7 +160,7 @@ function process_rockspec(rockspec, output_dir)
     assert(type(rockspec) == "table", "rockspec2cmake.process_rockspec: Argument 'rockspec' is not a table.")
     assert(output_dir == nil or (type(output_dir) == "string" and pl.path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
 
-    local cmake = CMakeBuilder:new(nil, rockspec.package)
+    local cmake = CMakeBuilder.new(rockspec.package, rockspec.version)
 
     -- Parse (un)supported platforms
     if rockspec.supported_platforms ~= nil then
