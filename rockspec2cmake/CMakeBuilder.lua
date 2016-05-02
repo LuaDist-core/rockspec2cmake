@@ -1,7 +1,5 @@
 local pl = require "pl.import_into"()
 
-module("rockspec2cmake", package.seeall)
-
 -- All valid supported_platforms from rockspec file
 local rock2cmake_platform =
 {
