@@ -116,7 +116,7 @@ install(FILES ${dollar}{${name}_SOURCES} DESTINATION ${dollar}{INSTALL_LMOD}/${d
 ]]
 
 local cxx_module = pl.text.Template [[
-add_library(${name} SHARED ${dollar}{${name}_SOURCES})
+add_library(${name} MODULE ${dollar}{${name}_SOURCES})
 
 foreach(LIBRARY ${dollar}{${name}_LIB_NAMES})
     find_library(${name}_${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
