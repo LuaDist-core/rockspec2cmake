@@ -1,7 +1,7 @@
 package = "rockspec2cmake"
-version = "0.3-2"
+version = "0.3-3"
 source = {
-    tag = "0.3-2",
+    tag = "0.3-3",
     url = "git://github.com/f4rnham/rockspec2cmake.git"
 }
 description = {

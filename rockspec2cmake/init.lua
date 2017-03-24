@@ -55,7 +55,8 @@ local process_builtin
 
 local function process_install(cmake, install, platform)
     for what, files in pairs(install) do
-        for key, src in pl.tablex.sort(files) do
+      table.sort(files)
+        for key, src in pairs(files) do
             local dst, name
 
             if type(key) == "string" then
