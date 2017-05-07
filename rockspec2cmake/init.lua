@@ -83,6 +83,7 @@ local function process_install(cmake, install, platform)
 end
 
 local function process_module(cmake, name, info, platform)
+    local name = string.gsub(name, "%.", "_")
     -- Pathname of Lua file or C source, for modules based on single source file
     if type(info) == "string" then
         local ext = info:match(".([^.]+)$")
@@ -156,7 +157,7 @@ end
 -- as string, or returns nil, error_message on error.
 -- If argument 'output_dir' is provided, this function creates file CMakeLists.txt
 -- in provided directory
-function rockspec2cmake.process_rockspec(rockspec, output_dir)
+function rockspec2cmake.process_rockspec(rockspec, output_dir, static)
     assert(type(rockspec) == "table", "rockspec2cmake.process_rockspec: Argument 'rockspec' is not a table.")
     assert(output_dir == nil or (type(output_dir) == "string" and pl.path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
 
@@ -188,7 +189,7 @@ function rockspec2cmake.process_rockspec(rockspec, output_dir)
     -- "none" build type can still contain "install" or "copy_directories" fields
     elseif rockspec.build.type == "builtin" or rockspec.build.type == "none" then
         process_builtin(cmake, rockspec.build)
-        cmake_commands = cmake:generate()
+        cmake_commands = cmake:generate(static)
     -- Use existing cmake
     elseif rockspec.build.type == "cmake" then
         if rockspec.build.cmake then
@@ -214,3 +215,4 @@ function rockspec2cmake.process_rockspec(rockspec, output_dir)
 end
 
 return rockspec2cmake
+

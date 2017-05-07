@@ -56,6 +56,15 @@ endif()
 
 ]]
 
+local footer_static = pl.text.Template[[
+set(LUA_STATIC_MODULES ${dollar}{STATIC_MODULES} ${dollar}{LUA_STATIC_MODULES} PARENT_SCOPE)
+set(LUA_STATIC_LIB_MODULES ${dollar}{STATIC_LIB_MODULES} ${dollar}{LUA_STATIC_LIB_MODULES} PARENT_SCOPE)
+
+]]
+
+local footer = pl.text.Template[[
+]]
+
 local fatal_error_msg = pl.text.Template[[
 message(FATAL_ERROR "${message}")
 
@@ -111,8 +120,56 @@ build_install(BUILD_INSTALL_bin ${dollar}{INSTALL_BIN})
 
 ]]
 
+local preload_lua_module = pl.text.Template[[
+set(${name}_GENERATED ${dollar}{CMAKE_CURRENT_BINARY_DIR}/${new_name})
+add_custom_command(OUTPUT ${dollar}{${name}_GENERATED}
+                   COMMAND ${dollar}{LUA} ${dollar}{BIN} +${dollar}{${name}_SOURCES} ${name} > ${dollar}{${name}_GENERATED}
+                   MAIN_DEPENDENCY ${dollar}{${name}_SOURCES} COMMENT "Creating ${package_name}_${new_name} file"
+                   WORKING_DIRECTORY ${dollar}{CMAKE_CURRENT_SOURCE_DIR} VERBATIM USES_TERMINAL)
+add_custom_target(${name}_TARGET ALL DEPENDS ${new_name})
+add_library(${package_name}_${name} STATIC ${dollar}{${name}_GENERATED})
+list(APPEND STATIC_MODULES "${name}")
+list(APPEND STATIC_LIB_MODULES "${package_name}_${name}")
+
+foreach(LIBRARY ${dollar}{${package_name}_${name}_LIB_NAMES})
+    find_library(${package_name}_${name}_${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${package_name}_${name}_LIBDIRS})
+    list(APPEND ${package_name}_${name}_LIBRARIES ${dollar}{LIBRARY})
+endforeach(LIBRARY)
+
+target_include_directories(${package_name}_${name} PRIVATE ${dollar}{${package_name}_${name}_INCDIRS} ${dollar}{LUA_INCLUDE_DIRS} ${dollar}{LUA_INCLUDE_DIR})
+target_compile_definitions(${package_name}_${name} PRIVATE ${dollar}{${package_name}_${name}_DEFINES})
+target_link_libraries(${package_name}_${name} PRIVATE ${dollar}{${package_name}_${name}_LIBRARIES} ${dollar}{LUA_LIBRARIES})
+# Do not prefix "lib" before target name
+set_target_properties(${package_name}_${name} PROPERTIES PREFIX "")
+set_target_properties(${package_name}_${name} PROPERTIES OUTPUT_NAME ${output_name})
+install(TARGETS ${package_name}_${name} DESTINATION ${dollar}{INSTALL_CMOD}/${dest})
+#-----------------------------------------------------------------------------------------
+
+]]
+
 local install_lua_module = pl.text.Template[[
 install(FILES ${dollar}{${name}_SOURCES} DESTINATION ${dollar}{INSTALL_LMOD}/${dest} RENAME ${new_name})
+]]
+
+local cxx_module_static = pl.text.Template[[
+add_library(${name} STATIC ${dollar}{${name}_SOURCES})
+list(APPEND STATIC_MODULES "${name}")
+list(APPEND STATIC_LIB_MODULES "${name}")
+
+foreach(LIBRARY ${dollar}{${name}_LIB_NAMES})
+    find_library(${name}_${dollar}{LIBRARY} ${dollar}{LIBRARY} ${dollar}{${name}_LIBDIRS})
+    list(APPEND ${name}_LIBRARIES ${dollar}{LIBRARY})
+endforeach(LIBRARY)
+
+target_include_directories(${name} PRIVATE ${dollar}{${name}_INCDIRS} ${dollar}{LUA_INCLUDE_DIRS} ${dollar}{LUA_INCLUDE_DIR})
+target_compile_definitions(${name} PRIVATE ${dollar}{${name}_DEFINES})
+target_link_libraries(${name} PRIVATE ${dollar}{${name}_LIBRARIES} ${dollar}{LUA_LIBRARIES})
+# Do not prefix "lib" before target name
+set_target_properties(${name} PROPERTIES PREFIX "")
+set_target_properties(${name} PROPERTIES OUTPUT_NAME ${output_name})
+install(TARGETS ${name} DESTINATION ${dollar}{INSTALL_CMOD}/${dest})
+#-----------------------------------------------------------------------------------------
+
 ]]
 
 local cxx_module = pl.text.Template [[
@@ -272,7 +329,7 @@ function CMakeBuilder:add_ext_dep(name, platform)
         name, name, platform)
 end
 
-function CMakeBuilder:generate()
+function CMakeBuilder:generate(static)
     local res = ""
 
     res = res .. intro:substitute({package_name = self.package_name, package_version = self.package_version, dollar = "$"})
@@ -334,11 +391,18 @@ function CMakeBuilder:generate()
     -- install.{lua|conf|bin|lib} and copy_directories
     res = res .. build_install_copy:substitute({package_name = self.package_name, dollar = "$"})
 
-    -- Lua targets, install only
+    -- Lua targets
     for _, name in pl.tablex.sort(self.lua_targets) do
-        -- Force install file as name.lua, rename if needed
-        res = res .. install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
-        new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"})
+        if static == true then
+            res = res .. preload_lua_module:substitute({new_name = name_from_lua_notation(name) .. ".c", name = name, 
+            dest = path_from_lua_notation(name), output_name = name_from_lua_notation(name), 
+            package_name = string.lower(self.package_name), dollar = "$"})
+        else
+            -- install only
+            -- Force install file as name.lua, rename if needed
+            res = res .. install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
+            new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"})
+        end
     end
     res = res .. "\n"
 
@@ -347,9 +411,15 @@ function CMakeBuilder:generate()
         local definitions = ""
         for _, name in pl.tablex.sort(targets) do
             if self.lua_targets[name] == nil then
-                -- Force install file as name.lua, rename if needed
-                definitions = definitions .. indent(install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
-                new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"}))
+                if static == true then 
+                    definitions = definitions .. indent(preload_lua_module:substitute({new_name = name_from_lua_notation(name) .. ".c",
+                    name = name, dest = path_from_lua_notation(name), output_name = name_from_lua_notation(name), 
+                    package_name = string.lower(self.package_name), dollar = "$"}))
+                else
+                    -- Force install file as name.lua, rename if needed
+                    definitions = definitions .. indent(install_lua_module:substitute({name = name, dest = path_from_lua_notation(name),
+                    new_name = name_from_lua_notation(name) .. ".lua", dollar = "$"}))
+                end
             end
         end
 
@@ -360,8 +430,13 @@ function CMakeBuilder:generate()
 
     -- Cxx targets
     for _, name in pl.tablex.sort(self.cxx_targets) do
-        res = res .. cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
-            output_name = name_from_lua_notation(name), dollar = "$"})
+        if static == true then 
+            res = res .. cxx_module_static:substitute({name = name, dest = path_from_lua_notation(name),
+                output_name = name_from_lua_notation(name), dollar = "$", package_name = string.lower(self.package_name)})
+        else
+            res = res .. cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
+                output_name = name_from_lua_notation(name), dollar = "$"})
+        end
     end
 
     -- Platform specific cxx targets
@@ -369,8 +444,13 @@ function CMakeBuilder:generate()
         local definitions = ""
         for _, name in pl.tablex.sort(targets) do
             if self.cxx_targets[name] == nil then
-                definitions = definitions .. indent(cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
-                    output_name = name_from_lua_notation(name), dollar = "$"}))
+                if static == true then
+                    definitions = definitions .. indent(cxx_module_static:substitute({name = name, dest = path_from_lua_notation(name),
+                        output_name = name_from_lua_notation(name), dollar = "$", package_name = string.lower(self.package_name)}))
+                else
+                    definitions = definitions .. indent(cxx_module:substitute({name = name, dest = path_from_lua_notation(name),
+                        output_name = name_from_lua_notation(name), dollar = "$"}))
+                end
             end
         end
 
@@ -379,7 +459,12 @@ function CMakeBuilder:generate()
         end
     end
 
+    if static == true then
+        res = res .. footer_static:substitute({dollar = "$"})
+    end
+
     return res
 end
 
 return CMakeBuilder
+
