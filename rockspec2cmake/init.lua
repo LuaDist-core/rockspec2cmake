@@ -2,6 +2,7 @@ local CMakeBuilder = require 'rockspec2cmake.CMakeBuilder'
 local pl = require "pl.import_into"()
 
 local rockspec2cmake = {}
+local static_mod = false
 
 -- Converts lua table into string useable for initialization of CMake list.
 -- Encloses each value of table in double quotes ("), escapes double quotes
@@ -83,7 +84,10 @@ local function process_install(cmake, install, platform)
 end
 
 local function process_module(cmake, name, info, platform)
-    local name = string.gsub(name, "%.", "_")
+    if static_mod == true then
+        name = string.gsub(name, "%.", "_")
+    end
+
     -- Pathname of Lua file or C source, for modules based on single source file
     if type(info) == "string" then
         local ext = info:match(".([^.]+)$")
@@ -161,6 +165,10 @@ function rockspec2cmake.process_rockspec(rockspec, output_dir, static)
     assert(type(rockspec) == "table", "rockspec2cmake.process_rockspec: Argument 'rockspec' is not a table.")
     assert(output_dir == nil or (type(output_dir) == "string" and pl.path.isabs(output_dir)), "rockspec2cmake.process_rockspec: Argument 'output_dir' not an absolute path.")
 
+    if static == true then
+        static_mod = true
+    end
+
     local cmake = CMakeBuilder.new(rockspec.package, rockspec.version)
 
     -- Parse (un)supported platforms
@@ -215,4 +223,3 @@ function rockspec2cmake.process_rockspec(rockspec, output_dir, static)
 end
 
 return rockspec2cmake
-
