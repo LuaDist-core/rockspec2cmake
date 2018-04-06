@@ -195,7 +195,10 @@ function rockspec2cmake.process_rockspec(rockspec, output_dir, static)
     if rockspec.build == nil then
         return nil, "Rockspec does not contain build information"
     -- "none" build type can still contain "install" or "copy_directories" fields
-    elseif rockspec.build.type == "builtin" or rockspec.build.type == "none" then
+    elseif (rockspec.build.type == "builtin" or rockspec.build.type == "none") or
+           -- the build type may be specified per-platform only
+           (rockspec.build.type == nil and rockspec.build.platforms ~= nil)
+    then
         process_builtin(cmake, rockspec.build)
         cmake_commands = cmake:generate(static)
     -- Use existing cmake
@@ -206,7 +209,7 @@ function rockspec2cmake.process_rockspec(rockspec, output_dir, static)
             return nil, "Rockspec build type is cmake, please use the attached CMakeLists.txt"
         end
     else
-        return nil, "Unhandled rockspec build type: " .. rockspec.build.type
+        return nil, "Unhandled rockspec build type: " .. pl.pretty.write(rockspec.build.type)
     end
 
     if output_dir ~= nil then
